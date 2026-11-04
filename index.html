@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Pedidos por chofer y proveedor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,400&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+  :root {
+    --font-anthropic-sans: Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-anthropic-serif: "Source Serif 4", Georgia, serif;
+    --cds-gap-xs: 4px; --cds-gap-sm: 8px; --cds-gap-md: 12px; --cds-gap-lg: 20px;
+    --cds-pad-xs: 4px; --cds-pad-sm: 8px; --cds-pad-md: 12px; --cds-pad-lg: 16px;
+    --cds-radius: 8px;
+    --cds-font-size-caption: 12px; --cds-font-size-body: 14px; --cds-font-size-heading: 16px; --cds-font-size-title: 28px;
+    --cds-font-weight-medium: 600;
+    --color-bg: #f7f6f2; --color-panel: #ffffff; --color-fg: #1f1e1b; --color-fg-muted: #6b6860;
+    --color-border-line: #e3e0d8; --color-bad: #c43d3d;
+    --cds-surface-popover: #ffffff; --cds-border: #d9d5cb; --cds-text-secondary: #6b6860;
+    --cds-shadow-popover: 0 4px 16px rgba(0,0,0,.12);
+    --cds-chart-grid: #eeebe4; --cds-chart-muted: #c9c5bb;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --color-bg: #1a1918; --color-panel: #242320; --color-fg: #ecebe6; --color-fg-muted: #a39f95;
+      --color-border-line: #3a3833; --color-bad: #e06666;
+      --cds-surface-popover: #2c2a27; --cds-border: #45423c; --cds-text-secondary: #a39f95;
+      --cds-shadow-popover: 0 4px 16px rgba(0,0,0,.5);
+      --cds-chart-grid: #302e2a; --cds-chart-muted: #5c5952;
+      color-scheme: dark;
+    }
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  body { margin: 0; background: var(--color-bg); color: var(--color-fg); font-family: var(--font-anthropic-sans); font-size: var(--cds-font-size-body); }
+  .pagina { max-width: 1200px; margin: 0 auto; padding: 24px 16px 48px; }
+  .al-dia { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); margin: 0 0 var(--cds-gap-sm); }
+  .dash-skeleton { color: transparent !important; background: var(--cds-chart-grid); border-radius: 4px; min-height: 1em; }
+</style>
+<script>
+// Reemplazo mínimo del runtime del tablero: lee los JSON de datos/ y guarda los filtros en la URL
+window.dash = (() => {
+  const ids = ["chofer_proveedor", "pedidos", "proveedores", "vendedores"];
+  const st = Object.fromEntries(ids.map((i) => [i, { status: 'loading', data: [] }]));
+  const subs = [];
+  const fire = () => { for (const f of subs) f(); };
+  let params = {};
+  try { params = JSON.parse(decodeURIComponent(location.hash.slice(1)) || '{}'); } catch (e) { params = {}; }
+  const guardar = () => history.replaceState(null, '', Object.keys(params).length ? '#' + encodeURIComponent(JSON.stringify(params)) : location.pathname + location.search);
+  for (const i of ids) {
+    fetch('datos/' + i + '.json?v=202611040711')
+      .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then((d) => { st[i] = { status: 'ok', data: d }; fire(); })
+      .catch(() => { st[i] = { status: 'error', data: [] }; fire(); });
+  }
+  let t;
+  addEventListener('resize', () => { clearTimeout(t); t = setTimeout(fire, 150); });
+  return {
+    data: (i) => st[i],
+    params: () => ({ ...params }),
+    setParams(p) { params = { ...params, ...p }; for (const k in params) if (params[k] == null) delete params[k]; guardar(); fire(); },
+    resetParams() { params = {}; guardar(); fire(); },
+    onData(f) { subs.push(f); f(); },
+    colors: ['#2f6fb5', '#d9822b', '#3a9d6a', '#c2507a', '#7b62c4', '#b8a12a', '#2aa0b0', '#8c6d4f'],
+  };
+})();
+</script>
+</head>
+<body>
+<div class="pagina">
+<p class="al-dia">Datos de Gescom al 04/11/2026 07:11.</p>
+<style>
+  .cm { font-family: var(--font-anthropic-sans); display: grid; gap: var(--cds-gap-lg); }
+  .cm-head h1 { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: 0; text-wrap: balance; }
+  .cm-take { margin: var(--cds-gap-xs) 0 0; color: var(--color-fg-muted); max-width: 70ch; }
+  .cm-bar { display: flex; flex-wrap: wrap; gap: var(--cds-gap-sm) var(--cds-gap-md); align-items: end; }
+  .cm-bar label { display: grid; gap: 2px; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .cm-bar select { font: inherit; font-size: var(--cds-font-size-body); color: var(--color-fg); background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: 4px 8px; max-width: 16rem; }
+  .cm-dia { display: inline-flex; align-items: stretch; gap: 4px; }
+  .cm-dia input { font: inherit; font-size: var(--cds-font-size-body); color: var(--color-fg); background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: 3px 6px; }
+  .cm-dia button { font: inherit; font-size: var(--cds-font-size-body); color: var(--color-fg); background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: 0 10px; cursor: pointer; }
+  .cm-seg { display: inline-flex; border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); overflow: hidden; }
+  .cm-seg button { font: inherit; font-size: var(--cds-font-size-body); background: var(--color-panel); color: var(--color-fg-muted); border: 0; padding: 4px 12px; cursor: pointer; }
+  .cm-seg button[aria-pressed="true"] { background: var(--color-fg); color: var(--color-bg); }
+  .cm-reset { font: inherit; font-size: var(--cds-font-size-caption); background: none; border: 0; color: var(--color-fg-muted); text-decoration: underline; cursor: pointer; padding: 6px 0; }
+  .cm-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); gap: var(--cds-gap-md); }
+  .cm-tile { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-md) var(--cds-pad-lg); }
+  .cm-tile span { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .cm-tile b { display: block; font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); font-variant-numeric: tabular-nums; }
+  .cm-card { background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: var(--cds-pad-lg); min-width: 0; }
+  .cm-card h2 { font-size: var(--cds-font-size-heading); font-weight: var(--cds-font-weight-medium); margin: 0; }
+  .cm-note { font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); margin: 2px 0 var(--cds-gap-md); }
+  .cm-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: var(--cds-font-size-caption); margin-bottom: var(--cds-gap-sm); }
+  .cm-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+  .cm-chart { position: relative; min-height: 200px; }
+  .cm-chart svg text { fill: var(--color-fg-muted); font-size: var(--cds-font-size-caption); }
+  .cm-chart svg text.cm-name { fill: var(--color-fg); cursor: pointer; }
+  .cm-chart rect { cursor: pointer; }
+  .cm-tip { position: absolute; pointer-events: none; background: var(--cds-surface-popover); border: 1px solid var(--cds-border); border-radius: var(--cds-radius); box-shadow: var(--cds-shadow-popover); padding: var(--cds-pad-xs) var(--cds-pad-sm); font-size: var(--cds-font-size-caption); max-width: 18rem; z-index: 2; }
+  .cm-tip div:first-child { color: var(--cds-text-secondary); }
+  .cm-wrap { overflow: auto; max-height: 34rem; }
+  .cm table { width: 100%; border-collapse: collapse; font-size: var(--cds-font-size-body); font-variant-numeric: tabular-nums; }
+  .cm th { position: sticky; top: 0; background: var(--color-panel); text-align: right; font-weight: var(--cds-font-weight-medium); font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); padding: 6px 8px; border-bottom: 1px solid var(--color-border-line); cursor: pointer; white-space: nowrap; }
+  .cm td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--color-border-line); white-space: nowrap; }
+  .cm th.l, .cm td.l { text-align: left; }
+  .cm td.w { white-space: normal; min-width: 12rem; color: var(--color-fg-muted); }
+  .cm tbody tr { cursor: pointer; }
+  .cm tbody tr:hover td { background: var(--cds-chart-grid); }
+  .cm tbody tr.on td { font-weight: var(--cds-font-weight-medium); }
+  .cm-field { display: grid; gap: 2px; font-size: var(--cds-font-size-caption); color: var(--color-fg-muted); }
+  .cm-multi { position: relative; }
+  .cm-multi summary { list-style: none; cursor: pointer; font-size: var(--cds-font-size-body); color: var(--color-fg); background: var(--color-panel); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: 4px 26px 4px 8px; max-width: 16rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: relative; }
+  .cm-multi summary::-webkit-details-marker { display: none; }
+  .cm-multi summary::after { content: "▾"; position: absolute; right: 8px; color: var(--color-fg-muted); }
+  .cm-multi-pop { position: absolute; z-index: 5; top: calc(100% + 4px); left: 0; width: min(18rem, 80vw); background: var(--cds-surface-popover); border: 1px solid var(--cds-border); border-radius: var(--cds-radius); box-shadow: var(--cds-shadow-popover); padding: var(--cds-pad-sm); }
+  .cm-multi-top { display: flex; gap: 6px; margin-bottom: 6px; }
+  .cm-multi-top input { flex: 1; min-width: 0; font: inherit; font-size: var(--cds-font-size-body); color: var(--color-fg); background: var(--color-bg); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: 3px 6px; }
+  .cm-multi-top button { font: inherit; font-size: var(--cds-font-size-caption); background: none; border: 0; color: var(--color-fg-muted); text-decoration: underline; cursor: pointer; }
+  .cm-multi-list { max-height: 16rem; overflow: auto; display: grid; }
+  .cm-multi-list label { display: flex; gap: 8px; align-items: center; font-size: var(--cds-font-size-body); color: var(--color-fg); padding: 3px 2px; cursor: pointer; }
+  .cm-multi-list label small { margin-left: auto; color: var(--color-fg-muted); font-variant-numeric: tabular-nums; }
+  .cm-search { font: inherit; font-size: var(--cds-font-size-body); color: var(--color-fg); background: var(--color-bg); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: 5px 10px; width: min(100%, 22rem); margin-bottom: var(--cds-gap-sm); }
+  .cm-pct { display: inline-block; height: 6px; border-radius: 3px; background: var(--cds-chart-muted); margin-left: 6px; vertical-align: 1px; }
+  .cm [data-dash-source-state=refreshing] { opacity: .5; }
+  .cm-fail { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); min-height: 200px; }
+  .cm-fail::before { content: ""; width: .375rem; height: .375rem; border-radius: 50%; background: var(--color-bad); }
+</style>
+
+<div class="cm">
+  <header class="cm-head" id="resumen">
+    <h1>Pedidos por chofer y proveedor</h1>
+    <p class="cm-take dash-skeleton" id="cm-take" data-source="pedidos chofer_proveedor proveedores vendedores"></p>
+  </header>
+
+  <div class="cm-bar" id="filtros">
+    <label>Período
+      <select id="cm-periodo">
+        <option value="abiertos">Viajes abiertos (sin cerrar)</option>
+        <option value="hoy">Hoy</option>
+        <option value="dia">Un día…</option>
+        <option value="7d">Últimos 7 días</option>
+        <option value="mes">Este mes</option>
+        <option value="mesant">Mes anterior</option>
+        <option value="todo">Desde el 1/8</option>
+      </select>
+    </label>
+    <label id="cm-dia-box" hidden>Día
+      <span class="cm-dia">
+        <button type="button" id="cm-dia-prev" aria-label="Día anterior">‹</button><input type="date" id="cm-dia" min="2026-08-01" max="2099-12-31" aria-label="Día del viaje"><button type="button" id="cm-dia-next" aria-label="Día siguiente">›</button>
+      </span>
+    </label>
+    <label>Chofer <select id="cm-chofer" data-source="chofer_proveedor"></select></label>
+    <div class="cm-field">Vendedores
+      <details class="cm-multi" id="cm-vendedor" data-source="vendedores pedidos">
+        <summary id="cm-ven-sum">Todos</summary>
+        <div class="cm-multi-pop">
+          <div class="cm-multi-top"><input type="search" id="cm-ven-buscar" placeholder="Buscar vendedor" aria-label="Buscar vendedor"><button type="button" id="cm-ven-todos">Todos</button></div>
+          <div class="cm-multi-list" id="cm-ven-list"></div>
+        </div>
+      </details>
+    </div>
+    <label>Proveedor <select id="cm-marca" data-source="proveedores"></select></label>
+    <label>Medir por
+      <span class="cm-seg" id="cm-medida">
+        <button type="button" data-v="bultos">Bultos</button><button type="button" data-v="neto">Neto $</button><button type="button" data-v="pedidos">Pedidos</button>
+      </span>
+    </label>
+    <button type="button" class="cm-reset" id="cm-reset">Limpiar filtros</button>
+  </div>
+
+  <div class="cm-tiles" id="totales" data-source="pedidos chofer_proveedor">
+    <div class="cm-tile"><span>Pedidos asignados</span><b id="t-pedidos" class="dash-skeleton">—</b></div>
+    <div class="cm-tile"><span>Bultos</span><b id="t-bultos" class="dash-skeleton">—</b></div>
+    <div class="cm-tile"><span>Neto sin IVA</span><b id="t-neto" class="dash-skeleton">—</b></div>
+    <div class="cm-tile"><span>Choferes</span><b id="t-choferes" class="dash-skeleton">—</b></div>
+    <div class="cm-tile"><span>Vendedores</span><b id="t-vendedores" class="dash-skeleton">—</b></div>
+    <div class="cm-tile"><span>Viajes</span><b id="t-viajes" class="dash-skeleton">—</b></div>
+  </div>
+
+  <section class="cm-card" id="mezcla">
+    <h2>Qué proveedores lleva cada chofer</h2>
+    <p class="cm-note" id="cm-mez-note">Los 7 proveedores con más volumen en el período; el resto va en “Otros”. Tocá un chofer o un color para filtrar.</p>
+    <div class="cm-legend" id="cm-legend"></div>
+    <div class="cm-chart dash-skeleton" id="cm-chart" data-source="chofer_proveedor proveedores"></div>
+  </section>
+
+  <section class="cm-card" id="choferes">
+    <h2>Choferes</h2>
+    <p class="cm-note" id="cm-cho-note">Un pedido es una venta (VEN o DEB) asignada a un viaje. Tocá una fila para ver solo ese chofer.</p>
+    <div class="cm-wrap" data-source="pedidos chofer_proveedor proveedores">
+      <table id="cm-tcho"><thead><tr>
+        <th class="l" data-k="nombre">Chofer</th><th data-k="viajes">Viajes</th><th data-k="pedidos">Pedidos</th><th data-k="clientes">Clientes</th><th data-k="vendedores">Vendedores</th><th data-k="bultos">Bultos</th><th data-k="neto">Neto $</th><th class="l" data-k="top">Proveedor principal</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <section class="cm-card" id="vendedores">
+    <h2>Vendedores</h2>
+    <p class="cm-note" id="cm-ven-note">De qué vendedor son los pedidos que se reparten. Tocá filas para sumar o quitar vendedores del filtro.</p>
+    <div class="cm-wrap" data-source="pedidos chofer_proveedor vendedores">
+      <table id="cm-tven"><thead><tr>
+        <th class="l" data-k="nombre">Vendedor</th><th data-k="pedidos">Pedidos</th><th data-k="clientes">Clientes</th><th data-k="choferes">Choferes</th><th data-k="bultos">Bultos</th><th data-k="neto">Neto $</th><th class="l" data-k="top">Chofer que más lleva</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <section class="cm-card" id="proveedores">
+    <h2>Proveedores</h2>
+    <p class="cm-note">El proveedor de cada artículo según Gescom. Tocá una fila para ver solo ese proveedor.</p>
+    <div class="cm-wrap" data-source="chofer_proveedor proveedores">
+      <table id="cm-tmar"><thead><tr>
+        <th class="l" data-k="marca">Proveedor</th><th data-k="pedidos">Pedidos</th><th data-k="bultos">Bultos</th><th data-k="neto">Neto $</th><th data-k="choferes">Choferes</th><th data-k="share">% del volumen</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </section>
+
+  <section class="cm-card" id="pedidos">
+    <h2>Pedidos</h2>
+    <p class="cm-note" id="cm-ped-note">Cada pedido con su viaje, chofer, vendedor y cliente. Bultos y neto son del pedido entero.</p>
+    <input type="search" class="cm-search" id="cm-buscar" placeholder="Buscar pedido, cliente, vendedor…" aria-label="Buscar pedidos">
+    <div class="cm-wrap" data-source="pedidos vendedores chofer_proveedor">
+      <table id="cm-tped"><thead><tr>
+        <th class="l" data-k="pedido">Pedido</th><th class="l" data-k="fecha">Fecha</th><th class="l" data-k="viaje">Viaje</th><th class="l" data-k="chofer">Chofer</th><th class="l" data-k="vendedor">Vendedor</th><th class="l" data-k="cliente">Cliente</th><th data-k="bultos">Bultos</th><th data-k="neto">Neto $</th><th class="l" data-k="provs">Proveedores</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const $ = (s) => document.querySelector(s);
+  const nf = new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 });
+  const nc = new Intl.NumberFormat('es-AR', { notation: 'compact', maximumFractionDigits: 1 });
+  const pf = new Intl.NumberFormat('es-AR', { style: 'percent', maximumFractionDigits: 0 });
+  const money = (v) => '$ ' + (Math.abs(v) >= 1e6 ? nc.format(v) : nf.format(v));
+  const fmt = (k, v) => (k === 'neto' ? money(v) : nf.format(v));
+  const MED = { bultos: 'bultos', neto: 'neto sin IVA', pedidos: 'pedidos' };
+  const DEF = { periodo: 'abiertos', chofer: null, vendedores: [], proveedor: null, medida: 'bultos' };
+  const vendSel = () => (Array.isArray(P().vendedores) ? P().vendedores.map(String) : []);
+  const toggleVendedor = (k) => { const s = vendSel(); dash.setParams({ vendedores: s.includes(k) ? s.filter((x) => x !== k) : [...s, k] }); };
+  const P = () => ({ ...DEF, ...dash.params() });
+  const sortState = { cho: { k: null, asc: false }, mar: { k: null, asc: false }, ven: { k: null, asc: false }, ped: { k: null, asc: false } };
+  const MAX_PED = 300;
+
+  const iso = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+  const inPeriod = (p) => {
+    const now = new Date(), hoy = iso(now);
+    if (p === 'abiertos') return (r) => +r.abierto === 1;
+    if (p === 'hoy') return (r) => r.fecha === hoy;
+    if (p === 'dia') { const d = P().dia || hoy; return (r) => r.fecha === d; }
+    if (p === '7d') { const d = new Date(now); d.setDate(d.getDate() - 6); const desde = iso(d); return (r) => r.fecha >= desde && r.fecha <= hoy; }
+    if (p === 'mes') { const m = hoy.slice(0, 7); return (r) => r.fecha.startsWith(m); }
+    if (p === 'mesant') { const d = new Date(now.getFullYear(), now.getMonth() - 1, 1); const m = iso(d).slice(0, 7); return (r) => r.fecha.startsWith(m); }
+    return () => true;
+  };
+  const fechaTxt = (s) => new Date(s + 'T12:00:00').toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'numeric' });
+  const perTxt = (p) => (p.periodo === 'dia' ? 'el ' + fechaTxt(p.dia || iso(new Date())) : PER_TXT[p.periodo]);
+  const PER_TXT = { abiertos: 'en viajes abiertos', hoy: 'hoy', '7d': 'en los últimos 7 días', mes: 'este mes', mesant: 'el mes anterior', todo: 'desde el 1/8' };
+
+  const corto = (s) => (s || '').replace(/\b(S\.?\s?A\.?|S\.?R\.?L\.?)\s*$/i, '').replace(/\bARGENTINA\b/i, '').trim()
+    .toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+  let nombreProv = new Map();
+  const etiqueta = (m) => nombreProv.get(String(m)) || 'Proveedor ' + m;
+  const nombreChofer = new Map();
+  let nombreVendedor = new Map();
+  const vendedorTxt = (v) => nombreVendedor.get(String(v)) || 'Vendedor ' + v;
+  const tituloCase = (s) => (s || '').toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
+
+  // Controles
+  const selP = $('#cm-periodo'), selC = $('#cm-chofer'), selV = $('#cm-vendedor'), selM = $('#cm-marca');
+  const venList = $('#cm-ven-list'), venBuscar = $('#cm-ven-buscar');
+  venList.addEventListener('change', (e) => { const c = e.target.closest('input[type=checkbox]'); if (c) toggleVendedor(c.value); });
+  $('#cm-ven-todos').addEventListener('click', () => dash.setParams({ vendedores: [] }));
+  venBuscar.addEventListener('input', () => {
+    const q = venBuscar.value.trim().toLowerCase();
+    for (const l of venList.children) l.hidden = !!q && !l.textContent.toLowerCase().includes(q);
+  });
+  document.addEventListener('click', (e) => { if (selV.open && !selV.contains(e.target)) selV.open = false; });
+  const buscar = $('#cm-buscar');
+  buscar.addEventListener('input', () => draw());
+  selP.addEventListener('change', () => dash.setParams(selP.value === 'dia' && !P().dia ? { periodo: 'dia', dia: iso(new Date()) } : { periodo: selP.value }));
+  const inDia = $('#cm-dia');
+  inDia.addEventListener('change', () => { if (inDia.value && inDia.validity.valid) dash.setParams({ dia: inDia.value }); });
+  inDia.addEventListener('blur', () => { inDia.value = P().dia || iso(new Date()); });
+  const moverDia = (n) => { const d = new Date((P().dia || iso(new Date())) + 'T12:00:00'); d.setDate(d.getDate() + n); dash.setParams({ dia: iso(d) }); };
+  $('#cm-dia-prev').addEventListener('click', () => moverDia(-1));
+  $('#cm-dia-next').addEventListener('click', () => moverDia(1));
+  selC.addEventListener('change', () => dash.setParams({ chofer: selC.value || null }));
+  selM.addEventListener('change', () => dash.setParams({ proveedor: selM.value || null }));
+  $('#cm-medida').addEventListener('click', (e) => { const b = e.target.closest('button'); if (b) dash.setParams({ medida: b.dataset.v }); });
+  $('#cm-reset').addEventListener('click', () => { dash.resetParams(); dash.setParams({ ...DEF }); });
+  $('#cm-tcho tbody').addEventListener('click', (e) => { const tr = e.target.closest('tr[data-key]'); if (tr) dash.setParams({ chofer: P().chofer === tr.dataset.key ? null : tr.dataset.key }); });
+  $('#cm-tmar tbody').addEventListener('click', (e) => { const tr = e.target.closest('tr[data-key]'); if (tr) dash.setParams({ proveedor: P().proveedor === tr.dataset.key ? null : tr.dataset.key }); });
+  $('#cm-tven tbody').addEventListener('click', (e) => { const tr = e.target.closest('tr[data-key]'); if (tr) toggleVendedor(tr.dataset.key); });
+  for (const [tid, st] of [['#cm-tcho', 'cho'], ['#cm-tmar', 'mar'], ['#cm-tven', 'ven'], ['#cm-tped', 'ped']]) {
+    $(tid + ' thead').addEventListener('click', (e) => {
+      const th = e.target.closest('th[data-k]'); if (!th) return;
+      const s = sortState[st]; s.asc = s.k === th.dataset.k ? !s.asc : ['nombre', 'marca', 'ejemplo', 'top', 'chofer', 'vendedor', 'cliente', 'provs'].includes(th.dataset.k); s.k = th.dataset.k; draw();
+    });
+  }
+  const sortRows = (rows, st, defK) => {
+    const s = sortState[st], k = s.k || defK, asc = s.k ? s.asc : false;
+    return rows.sort((a, b) => { const x = a[k], y = b[k]; const c = typeof x === 'number' ? x - y : String(x).localeCompare(String(y), 'es'); return asc ? c : -c; });
+  };
+
+  const tip = document.createElement('div'); tip.className = 'cm-tip'; tip.hidden = true;
+
+  function fail(el) { el.replaceChildren(); const d = document.createElement('div'); d.className = 'cm-fail'; d.textContent = 'Failed to load'; el.append(d); }
+
+  function draw() {
+    const A = dash.data('chofer_proveedor'), D = dash.data('pedidos'), M = dash.data('proveedores'), V = dash.data('vendedores');
+    const p = P();
+    selP.value = p.periodo;
+    $('#cm-dia-box').hidden = p.periodo !== 'dia';
+    if (inDia !== document.activeElement) inDia.value = p.dia || iso(new Date());
+    for (const b of document.querySelectorAll('#cm-medida button')) b.setAttribute('aria-pressed', String(b.dataset.v === p.medida));
+    const chart = $('#cm-chart');
+    if ([A, D, M, V].some((x) => x.status !== 'ok')) {
+      if ([A, D, M, V].some((x) => x.status === 'error')) { fail(chart); $('#cm-take').classList.remove('dash-skeleton'); }
+      return;
+    }
+    for (const el of document.querySelectorAll('.cm .dash-skeleton')) el.classList.remove('dash-skeleton');
+
+    nombreProv = new Map(M.data.map((r) => [String(r.proveedor), corto(r.proveedor_nombre)]));
+    nombreVendedor = new Map(V.data.map((r) => [String(r.vendedor), tituloCase(r.vendedor_nombre)]));
+    for (const r of A.data) nombreChofer.set(String(r.chofer), tituloCase(r.chofer_nombre));
+    const venVol = d3.rollup(D.data, (v) => v.length, (r) => String(r.vendedor));
+    const optsV = [...venVol.keys()].sort((a, b) => vendedorTxt(a).localeCompare(vendedorTxt(b), 'es'));
+    const vs = vendSel();
+    if (venList.childElementCount !== optsV.length) {
+      venList.replaceChildren(...optsV.map((k) => {
+        const l = document.createElement('label'); const c = document.createElement('input');
+        c.type = 'checkbox'; c.value = k; const n = document.createElement('small'); n.textContent = nf.format(venVol.get(k));
+        l.append(c, vendedorTxt(k), n); return l;
+      }));
+    }
+    for (const c of venList.querySelectorAll('input')) c.checked = vs.includes(c.value);
+    $('#cm-ven-sum').textContent = !vs.length ? 'Todos' : vs.length === 1 ? vendedorTxt(vs[0]) : vs.length + ' vendedores';
+
+    // Opciones de los selectores (todos los choferes y proveedores que aparecen)
+    const optsC = [...nombreChofer].sort((a, b) => a[1].localeCompare(b[1], 'es'));
+    selC.replaceChildren(new Option('Todos', ''), ...optsC.map(([k, n]) => new Option(n, k)));
+    selC.value = p.chofer ?? '';
+    const vol = d3.rollup(A.data, (v) => d3.sum(v, (r) => +r.bultos), (r) => String(r.proveedor));
+    const optsM = [...vol.keys()].sort((a, b) => vol.get(b) - vol.get(a));
+    selM.replaceChildren(new Option('Todas', ''), ...optsM.map((k) => new Option(etiqueta(k), k)));
+    selM.value = p.proveedor ?? '';
+
+    const okP = inPeriod(p.periodo);
+    const vset = new Set(vs);
+    const base = (r) => okP(r) && (!p.chofer || String(r.chofer) === p.chofer) && (!vset.size || vset.has(String(r.vendedor)));
+    const rowsAM = A.data.filter((r) => base(r) && (!p.proveedor || String(r.proveedor) === p.proveedor));
+    // Pedidos: con filtro de proveedor, los que llevan al menos un artículo de ese proveedor
+    const rowsD = D.data.filter((r) => base(r) && (!p.proveedor || r.proveedores.includes(',' + p.proveedor + ',')));
+    const med = p.medida;
+
+    // Totales
+    const tot = {
+      pedidos: rowsD.length,
+      bultos: d3.sum(rowsAM, (r) => +r.bultos),
+      neto: d3.sum(rowsAM, (r) => +r.neto),
+      choferes: new Set(rowsD.map((r) => r.chofer)).size,
+      vendedores: new Set(rowsD.map((r) => r.vendedor)).size,
+      viajes: new Set(rowsD.map((r) => r.viaje)).size,
+    };
+    $('#t-pedidos').textContent = nf.format(tot.pedidos);
+    $('#t-bultos').textContent = nf.format(tot.bultos);
+    $('#t-neto').textContent = money(tot.neto);
+    $('#t-choferes').textContent = nf.format(tot.choferes);
+    $('#t-vendedores').textContent = nf.format(tot.vendedores);
+    $('#t-viajes').textContent = nf.format(tot.viajes);
+
+    // Por chofer y proveedor
+    const byCM = d3.rollup(rowsAM, (v) => ({ pedidos: d3.sum(v, (r) => +r.pedidos), bultos: d3.sum(v, (r) => +r.bultos), neto: d3.sum(v, (r) => +r.neto) }), (r) => String(r.chofer), (r) => String(r.proveedor));
+    const byM = d3.rollup(rowsAM, (v) => ({ pedidos: d3.sum(v, (r) => +r.pedidos), bultos: d3.sum(v, (r) => +r.bultos), neto: d3.sum(v, (r) => +r.neto), choferes: new Set(v.map((r) => r.chofer)).size }), (r) => String(r.proveedor));
+    const totMed = d3.sum([...byM.values()], (x) => x[med]);
+    const topM = [...byM].sort((a, b) => b[1][med] - a[1][med]).slice(0, 7).map((d) => d[0]);
+    const keys = [...topM, 'otras'];
+    const color = (k) => (k === 'otras' ? 'var(--cds-chart-muted)' : dash.colors[topM.indexOf(k) % dash.colors.length]);
+
+    // Frase resumen
+    const choRank = [...byCM].map(([c, mm]) => [c, d3.sum([...mm.values()], (x) => x[med])]).sort((a, b) => b[1] - a[1]);
+    const take = $('#cm-take');
+    if (!rowsAM.length) take.textContent = 'No hay pedidos asignados ' + perTxt(p) + ' con estos filtros.';
+    else {
+      let s = nf.format(tot.pedidos) + ' pedidos ' + perTxt(p) + (vs.length === 1 ? ' de ' + vendedorTxt(vs[0]) : vs.length > 1 ? ' de ' + vs.map(vendedorTxt).join(', ').replace(/, ([^,]*)$/, ' y $1') : '') + (p.proveedor ? ' con ' + etiqueta(p.proveedor) : '') + ', repartidos entre ' + tot.choferes + (tot.choferes === 1 ? ' chofer' : ' choferes') + '.';
+      if (!p.chofer && choRank.length > 1) s += ' ' + nombreChofer.get(choRank[0][0]) + ' es el que más lleva (' + fmt(med, choRank[0][1]) + ' ' + (med === 'neto' ? '' : MED[med]) + ').';
+      if (tot.vendedores > 1) { const tv = d3.greatest(d3.rollups(rowsD, (v) => v.length, (r) => String(r.vendedor)), (d) => d[1]); s += ' El vendedor con más pedidos es ' + vendedorTxt(tv[0]) + ' (' + nf.format(tv[1]) + ').'; }
+      if (!p.proveedor && topM.length) s += ' El proveedor más pesado es ' + etiqueta(topM[0]) + ', con ' + pf.format(byM.get(topM[0])[med] / totMed) + ' del total en ' + MED[med] + '.';
+      take.textContent = s.replace(/\s+\)/, ')');
+    }
+
+    // Gráfico apilado
+    $('#cm-mez-note').textContent = (med === 'pedidos' ? 'Pedidos que llevan al menos un artículo de cada proveedor (un pedido con varios proveedores suma en cada uno). ' : 'Medido en ' + MED[med] + '. ') + 'Los 7 proveedores con más volumen en el período; el resto va en “Otros”. Tocá un chofer o un color para filtrar.';
+    const leg = $('#cm-legend');
+    leg.replaceChildren(...keys.filter((k) => k !== 'otras' || byM.size > topM.length).map((k) => {
+      const s = document.createElement('span'); const i = document.createElement('i'); i.style.background = color(k);
+      s.append(i, k === 'otras' ? 'Otros' : etiqueta(k)); return s;
+    }));
+    const stackRows = choRank.map(([c]) => {
+      const mm = byCM.get(c); const o = { chofer: c, total: 0 };
+      for (const k of keys) o[k] = 0;
+      for (const [m, x] of mm) { o[topM.includes(m) ? m : 'otras'] += x[med]; o.total += x[med]; }
+      return o;
+    });
+    chart.replaceChildren();
+    if (!stackRows.length) { chart.style.minHeight = '60px'; return drawTables(); }
+    chart.style.minHeight = '';
+    const W = chart.clientWidth || 600, rowH = 28;
+    const H = stackRows.length * rowH + 28;
+    const svg = d3.select(chart).append('svg').attr('width', '100%').attr('viewBox', `0 0 ${W} ${H}`);
+    const names = svg.append('g');
+    let mL = 0;
+    for (const r of stackRows) { const t = names.append('text').text(nombreChofer.get(r.chofer)); mL = Math.max(mL, t.node().getComputedTextLength()); t.remove(); }
+    mL = Math.min(mL + 10, W * 0.4);
+    const endW = 64;
+    const x = d3.scaleLinear([0, d3.max(stackRows, (r) => r.total) || 1], [mL, W - endW]);
+    const y = d3.scaleBand(stackRows.map((r) => r.chofer), [4, H - 24]).padding(0.25);
+    const ax = svg.append('g').attr('transform', `translate(0,${H - 22})`).call(d3.axisBottom(x).ticks(Math.max(2, Math.floor((W - mL) / 90))).tickFormat((v) => med === 'neto' ? nc.format(v) : nc.format(v)).tickSize(0));
+    ax.attr('font-size', null).attr('font-family', null); ax.select('.domain').remove();
+    svg.append('g').selectAll('line').data(x.ticks(Math.max(2, Math.floor((W - mL) / 90)))).join('line')
+      .attr('x1', (d) => x(d)).attr('x2', (d) => x(d)).attr('y1', 0).attr('y2', H - 24).attr('stroke', 'var(--cds-chart-grid)');
+    const series = d3.stack().keys(keys)(stackRows);
+    const box = () => chart.getBoundingClientRect();
+    svg.append('g').selectAll('g').data(series).join('g').attr('fill', (s) => color(s.key))
+      .selectAll('rect').data((s) => s.map((d) => Object.assign(d, { key: s.key }))).join('rect')
+      .attr('x', (d) => x(d[0])).attr('width', (d) => Math.max(0, x(d[1]) - x(d[0]) - (d[1] - d[0] > 0 ? 1 : 0)))
+      .attr('y', (d) => y(d.data.chofer)).attr('height', y.bandwidth())
+      .attr('opacity', (d) => (p.proveedor && d.key !== p.proveedor ? 0.35 : 1))
+      .on('mousemove', (e, d) => {
+        const v = d[1] - d[0];
+        tip.replaceChildren();
+        const a = document.createElement('div'); a.textContent = nombreChofer.get(d.data.chofer);
+        const b = document.createElement('div'); b.textContent = (d.key === 'otras' ? 'Otros proveedores' : etiqueta(d.key)) + ': ' + fmt(med, v) + ' (' + pf.format(v / (d.data.total || 1)) + ' de lo suyo)';
+        tip.append(a, b);
+        tip.hidden = false;
+        const bb = box(); let lx = e.clientX - bb.left + 12; if (lx + 260 > bb.width) lx = Math.max(0, e.clientX - bb.left - 270);
+        tip.style.left = lx + 'px'; tip.style.top = (e.clientY - bb.top + 12) + 'px';
+      })
+      .on('mouseleave', () => { tip.hidden = true; })
+      .on('click', (e, d) => { if (d.key !== 'otras') dash.setParams({ proveedor: p.proveedor === d.key ? null : d.key }); });
+    svg.append('g').selectAll('text').data(stackRows).join('text').attr('class', 'cm-name')
+      .attr('x', mL - 8).attr('y', (r) => y(r.chofer) + y.bandwidth() / 2).attr('dy', '0.35em').attr('text-anchor', 'end')
+      .text((r) => nombreChofer.get(r.chofer)).on('click', (e, r) => dash.setParams({ chofer: p.chofer === r.chofer ? null : r.chofer }));
+    svg.append('g').selectAll('text').data(stackRows).join('text')
+      .attr('x', (r) => x(r.total) + 6).attr('y', (r) => y(r.chofer) + y.bandwidth() / 2).attr('dy', '0.35em')
+      .text((r) => med === 'neto' ? money(r.total) : nf.format(r.total));
+    chart.append(tip);
+
+    drawTables();
+
+    function drawTables() {
+      // Choferes
+      const fila = (cells, key, on) => {
+        const tr = document.createElement('tr'); if (key != null) tr.dataset.key = key; if (on) tr.className = 'on';
+        for (const [t, c] of cells) { const td = document.createElement('td'); td.textContent = t; if (c) td.className = c; tr.append(td); }
+        return tr;
+      };
+      const resumenPedidos = (v) => ({ pedidos: v.length, viajes: new Set(v.map((r) => r.viaje)).size, clientes: new Set(v.map((r) => r.cliente)).size, vendedores: new Set(v.map((r) => r.vendedor)).size, choferes: new Set(v.map((r) => r.chofer)).size });
+      const dByC = d3.rollup(rowsD, resumenPedidos, (r) => String(r.chofer));
+      const cho = [...byCM].map(([c, mm]) => {
+        const xs = [...mm.values()]; const top = [...mm].sort((a, b) => b[1][med] - a[1][med])[0];
+        const dd = dByC.get(c) || { pedidos: 0, viajes: 0, clientes: 0, vendedores: 0 };
+        return {
+          key: c, nombre: nombreChofer.get(c), viajes: dd.viajes, clientes: dd.clientes, vendedores: dd.vendedores,
+          pedidos: dd.pedidos, bultos: d3.sum(xs, (x) => x.bultos), neto: d3.sum(xs, (x) => x.neto),
+          top: top ? etiqueta(top[0]) : '', topShare: top ? top[1][med] / (d3.sum(xs, (x) => x[med]) || 1) : 0,
+        };
+      });
+      sortRows(cho, 'cho', med);
+      $('#cm-tcho tbody').replaceChildren(...cho.map((r) => fila([[r.nombre, 'l'], [nf.format(r.viajes)], [nf.format(r.pedidos)], [nf.format(r.clientes)], [nf.format(r.vendedores)], [nf.format(r.bultos)], [money(r.neto)], [r.top + ' · ' + pf.format(r.topShare), 'l']], r.key, p.chofer === r.key)));
+      $('#cm-cho-note').textContent = p.proveedor
+        ? 'Pedidos que llevan ' + etiqueta(p.proveedor) + '; bultos y neto son solo de ese proveedor.'
+        : 'Un pedido es una venta (VEN o DEB) asignada a un viaje. Tocá una fila para ver solo ese chofer.';
+
+      // Vendedores
+      const dByV = d3.rollup(rowsD, (v) => ({ ...resumenPedidos(v), top: d3.greatest(d3.rollups(v, (w) => w.length, (r) => String(r.chofer)), (d) => d[1]) }), (r) => String(r.vendedor));
+      const aByV = d3.rollup(rowsAM, (v) => ({ bultos: d3.sum(v, (r) => +r.bultos), neto: d3.sum(v, (r) => +r.neto) }), (r) => String(r.vendedor));
+      const ven = [...dByV].map(([k, d]) => {
+        const a = aByV.get(k) || { bultos: 0, neto: 0 };
+        return { key: k, nombre: vendedorTxt(k), pedidos: d.pedidos, clientes: d.clientes, choferes: d.choferes, bultos: a.bultos, neto: a.neto,
+          top: d.top ? nombreChofer.get(d.top[0]) + ' · ' + pf.format(d.top[1] / d.pedidos) : '' };
+      });
+      sortRows(ven, 'ven', med);
+      $('#cm-tven tbody').replaceChildren(...ven.map((r) => fila([[r.nombre, 'l'], [nf.format(r.pedidos)], [nf.format(r.clientes)], [nf.format(r.choferes)], [nf.format(r.bultos)], [money(r.neto)], [r.top, 'l']], r.key, vset.has(r.key))));
+
+      // Lista de pedidos
+      const q = buscar.value.trim().toLowerCase();
+      let ped = rowsD.map((r) => ({
+        pedido: +r.pedido, fecha: r.fecha, viaje: String(r.viaje), chofer: nombreChofer.get(String(r.chofer)) || r.chofer,
+        vendedor: vendedorTxt(r.vendedor), cliente: r.cliente_nombre ? r.cliente + ' · ' + r.cliente_nombre : String(r.cliente),
+        bultos: +r.bultos, neto: +r.neto, provs: r.proveedores.split(',').filter(Boolean).map(etiqueta).join(', '),
+      }));
+      if (q) ped = ped.filter((r) => [r.pedido, r.viaje, r.chofer, r.vendedor, r.cliente].join(' ').toLowerCase().includes(q));
+      const sp = sortState.ped;
+      if (!sp.k) ped.sort((a, b) => (b.fecha === a.fecha ? b.pedido - a.pedido : b.fecha.localeCompare(a.fecha))); else sortRows(ped, 'ped', 'fecha');
+      const fecha = (s) => s.slice(8, 10) + '/' + s.slice(5, 7);
+      $('#cm-tped tbody').replaceChildren(...ped.slice(0, MAX_PED).map((r) => fila([[String(r.pedido), 'l'], [fecha(r.fecha), 'l'], [r.viaje, 'l'], [r.chofer, 'l'], [r.vendedor, 'l'], [r.cliente, 'l'], [nf.format(r.bultos)], [money(r.neto)], [r.provs, 'l w']])));
+      $('#cm-ped-note').textContent = nf.format(ped.length) + ' pedidos' + (ped.length > MAX_PED ? ', se muestran los primeros ' + MAX_PED + ' (usá los filtros o el buscador para acotar)' : '') + '. Bultos y neto son del pedido entero.';
+
+      // Proveedores
+      const mar = [...byM].map(([m, x]) => {
+        return { key: m, marca: etiqueta(m), ...x, share: totMed ? x[med] / totMed : 0 };
+      });
+      sortRows(mar, 'mar', med);
+      $('#cm-tmar tbody').replaceChildren(...mar.map((r) => {
+        const tr = document.createElement('tr'); tr.dataset.key = r.key; if (p.proveedor === r.key) tr.className = 'on';
+        const cells = [[r.marca, 'l'], [nf.format(r.pedidos)], [nf.format(r.bultos)], [money(r.neto)], [nf.format(r.choferes)]];
+        for (const [t, c] of cells) { const td = document.createElement('td'); td.textContent = t; if (c) td.className = c; tr.append(td); }
+        const td = document.createElement('td'); td.textContent = pf.format(r.share);
+        const bar = document.createElement('span'); bar.className = 'cm-pct'; bar.style.width = Math.round(r.share * 60) + 'px'; td.append(bar); tr.append(td);
+        return tr;
+      }));
+    }
+  }
+
+  dash.onData(draw);
+})();
+</script>
+
+</div>
+</body>
+</html>
