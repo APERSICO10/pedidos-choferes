@@ -52,7 +52,7 @@ window.dash = (() => {
   try { params = JSON.parse(decodeURIComponent(location.hash.slice(1)) || '{}'); } catch (e) { params = {}; }
   const guardar = () => history.replaceState(null, '', Object.keys(params).length ? '#' + encodeURIComponent(JSON.stringify(params)) : location.pathname + location.search);
   for (const i of ids) {
-    fetch('datos/' + i + '.json?v=202611060709')
+    fetch('datos/' + i + '.json?v=202611100710')
       .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then((d) => { st[i] = { status: 'ok', data: d }; fire(); })
       .catch(() => { st[i] = { status: 'error', data: [] }; fire(); });
@@ -72,7 +72,7 @@ window.dash = (() => {
 </head>
 <body>
 <div class="pagina">
-<p class="al-dia">Datos de Gescom al 06/11/2026 07:09.</p>
+<p class="al-dia">Datos de Gescom al 10/11/2026 07:10.</p>
 <style>
   .cm { font-family: var(--font-anthropic-sans); display: grid; gap: var(--cds-gap-lg); }
   .cm-head h1 { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: 0; text-wrap: balance; }
