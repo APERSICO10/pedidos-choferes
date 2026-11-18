@@ -44,7 +44,7 @@
 <script>
 // Reemplazo mínimo del runtime del tablero: lee los JSON de datos/ y guarda los filtros en la URL
 window.dash = (() => {
-  const ids = ["chofer_proveedor", "pedidos", "proveedores", "vendedores"];
+  const ids = ["chofer_proveedor", "pedidos", "rechazos", "clientes", "motivos", "proveedores", "vendedores"];
   const st = Object.fromEntries(ids.map((i) => [i, { status: 'loading', data: [] }]));
   const subs = [];
   const fire = () => { for (const f of subs) f(); };
@@ -52,7 +52,7 @@ window.dash = (() => {
   try { params = JSON.parse(decodeURIComponent(location.hash.slice(1)) || '{}'); } catch (e) { params = {}; }
   const guardar = () => history.replaceState(null, '', Object.keys(params).length ? '#' + encodeURIComponent(JSON.stringify(params)) : location.pathname + location.search);
   for (const i of ids) {
-    fetch('datos/' + i + '.json?v=202611180709')
+    fetch('datos/' + i + '.json?v=202611181212')
       .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then((d) => { st[i] = { status: 'ok', data: d }; fire(); })
       .catch(() => { st[i] = { status: 'error', data: [] }; fire(); });
@@ -72,7 +72,7 @@ window.dash = (() => {
 </head>
 <body>
 <div class="pagina">
-<p class="al-dia">Datos de Gescom al 18/11/2026 07:09.</p>
+<p class="al-dia">Datos de Gescom al 18/11/2026 12:12.</p>
 <style>
   .cm { font-family: var(--font-anthropic-sans); display: grid; gap: var(--cds-gap-lg); }
   .cm-head h1 { font-family: var(--font-anthropic-serif); font-weight: 400; font-size: var(--cds-font-size-title); margin: 0; text-wrap: balance; }
@@ -125,6 +125,9 @@ window.dash = (() => {
   .cm-multi-list label small { margin-left: auto; color: var(--color-fg-muted); font-variant-numeric: tabular-nums; }
   .cm-search { font: inherit; font-size: var(--cds-font-size-body); color: var(--color-fg); background: var(--color-bg); border: 1px solid var(--color-border-line); border-radius: var(--cds-radius); padding: 5px 10px; width: min(100%, 22rem); margin-bottom: var(--cds-gap-sm); }
   .cm-pct { display: inline-block; height: 6px; border-radius: 3px; background: var(--cds-chart-muted); margin-left: 6px; vertical-align: 1px; }
+  .cm-tiles-in { margin-bottom: var(--cds-gap-md); }
+  .cm-h3 { font-size: var(--cds-font-size-body); font-weight: var(--cds-font-weight-medium); margin: var(--cds-gap-lg) 0 0; }
+  .cm-note-sep { margin-top: var(--cds-gap-sm); }
   .cm [data-dash-source-state=refreshing] { opacity: .5; }
   .cm-fail { display: flex; align-items: center; justify-content: center; gap: 6px; color: var(--color-fg-muted); font-size: var(--cds-font-size-caption); min-height: 200px; }
   .cm-fail::before { content: ""; width: .375rem; height: .375rem; border-radius: 50%; background: var(--color-bad); }
@@ -198,6 +201,38 @@ window.dash = (() => {
     </div>
   </section>
 
+  <section class="cm-card" id="rechazos">
+    <h2>Rechazos por chofer</h2>
+    <p class="cm-note" id="cm-rch-take">Notas de crédito por rechazo (DEV-RE) cargadas en el viaje del pedido, con su motivo. Total = devolvió todo el pedido; parcial = una parte.</p>
+    <div class="cm-tiles cm-tiles-in" data-source="rechazos pedidos chofer_proveedor">
+      <div class="cm-tile"><span>Rechazos</span><b id="r-cant" class="dash-skeleton">—</b></div>
+      <div class="cm-tile"><span>Pedidos rechazados</span><b id="r-pct" class="dash-skeleton">—</b></div>
+      <div class="cm-tile"><span>Neto rechazado</span><b id="r-neto" class="dash-skeleton">—</b></div>
+      <div class="cm-tile"><span>Totales / parciales</span><b id="r-tot" class="dash-skeleton">—</b></div>
+    </div>
+    <div class="cm-wrap" data-source="rechazos pedidos chofer_proveedor motivos">
+      <table id="cm-trch"><thead><tr>
+        <th class="l" data-k="nombre">Chofer</th><th data-k="pedidos">Pedidos</th><th data-k="rech">Rechazos</th><th data-k="pct">% pedidos</th><th data-k="totales">Totales</th><th data-k="parciales">Parciales</th><th data-k="bultos">Bultos</th><th data-k="neto">Neto $</th><th data-k="pctNeto">% del neto</th><th data-k="reparto">Por el reparto</th><th class="l" data-k="top">Motivo principal</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+    <p class="cm-note cm-note-sep">“Por el reparto”: motivos No llegó chofer, Error de chofer, Error de carga chofer y Camión roto. Tocá una fila para ver solo ese chofer.</p>
+    <h3 class="cm-h3">Motivos</h3>
+    <p class="cm-note">Tocá un motivo para ver solo esos rechazos (filtra esta sección).</p>
+    <div class="cm-wrap" data-source="rechazos motivos">
+      <table id="cm-tmot"><thead><tr>
+        <th class="l" data-k="motivo">Motivo</th><th data-k="rech">Rechazos</th><th data-k="bultos">Bultos</th><th data-k="neto">Neto $</th><th data-k="choferes">Choferes</th><th data-k="share">% del total</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+    <h3 class="cm-h3">Detalle</h3>
+    <p class="cm-note" id="cm-rl-note"></p>
+    <input type="search" class="cm-search" id="cm-rbuscar" placeholder="Buscar cliente, chofer, motivo…" aria-label="Buscar rechazos">
+    <div class="cm-wrap" data-source="rechazos clientes motivos">
+      <table id="cm-trl"><thead><tr>
+        <th class="l" data-k="fecha">Fecha</th><th class="l" data-k="viaje">Viaje</th><th class="l" data-k="chofer">Chofer</th><th class="l" data-k="vendedor">Vendedor</th><th class="l" data-k="cliente">Cliente</th><th class="l" data-k="motivo">Motivo</th><th class="l" data-k="tipo">Tipo</th><th data-k="bultos">Bultos</th><th data-k="neto">Neto $</th><th class="l" data-k="provs">Proveedores</th>
+      </tr></thead><tbody></tbody></table>
+    </div>
+  </section>
+
   <section class="cm-card" id="vendedores">
     <h2>Vendedores</h2>
     <p class="cm-note" id="cm-ven-note">De qué vendedor son los pedidos que se reparten. Tocá filas para sumar o quitar vendedores del filtro.</p>
@@ -222,7 +257,7 @@ window.dash = (() => {
     <h2>Pedidos</h2>
     <p class="cm-note" id="cm-ped-note">Cada pedido con su viaje, chofer, vendedor y cliente. Bultos y neto son del pedido entero.</p>
     <input type="search" class="cm-search" id="cm-buscar" placeholder="Buscar pedido, cliente, vendedor…" aria-label="Buscar pedidos">
-    <div class="cm-wrap" data-source="pedidos vendedores chofer_proveedor">
+    <div class="cm-wrap" data-source="pedidos vendedores clientes chofer_proveedor">
       <table id="cm-tped"><thead><tr>
         <th class="l" data-k="pedido">Pedido</th><th class="l" data-k="fecha">Fecha</th><th class="l" data-k="viaje">Viaje</th><th class="l" data-k="chofer">Chofer</th><th class="l" data-k="vendedor">Vendedor</th><th class="l" data-k="cliente">Cliente</th><th data-k="bultos">Bultos</th><th data-k="neto">Neto $</th><th class="l" data-k="provs">Proveedores</th>
       </tr></thead><tbody></tbody></table>
@@ -239,11 +274,12 @@ window.dash = (() => {
   const money = (v) => '$ ' + (Math.abs(v) >= 1e6 ? nc.format(v) : nf.format(v));
   const fmt = (k, v) => (k === 'neto' ? money(v) : nf.format(v));
   const MED = { bultos: 'bultos', neto: 'neto sin IVA', pedidos: 'pedidos' };
-  const DEF = { periodo: 'abiertos', chofer: null, vendedores: [], proveedor: null, medida: 'bultos' };
+  const DEF = { periodo: 'abiertos', chofer: null, vendedores: [], proveedor: null, motivo: null, medida: 'bultos' };
+  const MOT_REPARTO = new Set(['9', '18', '19', '24']); // no llegó chofer, error de chofer, error de carga chofer, camión roto
   const vendSel = () => (Array.isArray(P().vendedores) ? P().vendedores.map(String) : []);
   const toggleVendedor = (k) => { const s = vendSel(); dash.setParams({ vendedores: s.includes(k) ? s.filter((x) => x !== k) : [...s, k] }); };
   const P = () => ({ ...DEF, ...dash.params() });
-  const sortState = { cho: { k: null, asc: false }, mar: { k: null, asc: false }, ven: { k: null, asc: false }, ped: { k: null, asc: false } };
+  const sortState = { cho: { k: null, asc: false }, mar: { k: null, asc: false }, ven: { k: null, asc: false }, ped: { k: null, asc: false }, rch: { k: null, asc: false }, mot: { k: null, asc: false }, rl: { k: null, asc: false } };
   const MAX_PED = 300;
 
   const iso = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -268,6 +304,9 @@ window.dash = (() => {
   const nombreChofer = new Map();
   let nombreVendedor = new Map();
   const vendedorTxt = (v) => nombreVendedor.get(String(v)) || 'Vendedor ' + v;
+  let nombreCliente = new Map(), nombreMotivo = new Map();
+  const clienteTxt = (c) => { const n = nombreCliente.get(String(c)); return n ? c + ' · ' + n : String(c); };
+  const motivoTxt = (m) => nombreMotivo.get(String(m)) || (m && m !== 'null' ? 'Motivo ' + m : 'Sin motivo');
   const tituloCase = (s) => (s || '').toLowerCase().replace(/(^|\s)\S/g, (c) => c.toUpperCase());
 
   // Controles
@@ -280,8 +319,9 @@ window.dash = (() => {
     for (const l of venList.children) l.hidden = !!q && !l.textContent.toLowerCase().includes(q);
   });
   document.addEventListener('click', (e) => { if (selV.open && !selV.contains(e.target)) selV.open = false; });
-  const buscar = $('#cm-buscar');
+  const buscar = $('#cm-buscar'), rbuscar = $('#cm-rbuscar');
   buscar.addEventListener('input', () => draw());
+  rbuscar.addEventListener('input', () => draw());
   selP.addEventListener('change', () => dash.setParams(selP.value === 'dia' && !P().dia ? { periodo: 'dia', dia: iso(new Date()) } : { periodo: selP.value }));
   const inDia = $('#cm-dia');
   inDia.addEventListener('change', () => { if (inDia.value && inDia.validity.valid) dash.setParams({ dia: inDia.value }); });
@@ -296,10 +336,12 @@ window.dash = (() => {
   $('#cm-tcho tbody').addEventListener('click', (e) => { const tr = e.target.closest('tr[data-key]'); if (tr) dash.setParams({ chofer: P().chofer === tr.dataset.key ? null : tr.dataset.key }); });
   $('#cm-tmar tbody').addEventListener('click', (e) => { const tr = e.target.closest('tr[data-key]'); if (tr) dash.setParams({ proveedor: P().proveedor === tr.dataset.key ? null : tr.dataset.key }); });
   $('#cm-tven tbody').addEventListener('click', (e) => { const tr = e.target.closest('tr[data-key]'); if (tr) toggleVendedor(tr.dataset.key); });
-  for (const [tid, st] of [['#cm-tcho', 'cho'], ['#cm-tmar', 'mar'], ['#cm-tven', 'ven'], ['#cm-tped', 'ped']]) {
+  $('#cm-trch tbody').addEventListener('click', (e) => { const tr = e.target.closest('tr[data-key]'); if (tr) dash.setParams({ chofer: P().chofer === tr.dataset.key ? null : tr.dataset.key }); });
+  $('#cm-tmot tbody').addEventListener('click', (e) => { const tr = e.target.closest('tr[data-key]'); if (tr) dash.setParams({ motivo: P().motivo === tr.dataset.key ? null : tr.dataset.key }); });
+  for (const [tid, st] of [['#cm-tcho', 'cho'], ['#cm-tmar', 'mar'], ['#cm-tven', 'ven'], ['#cm-tped', 'ped'], ['#cm-trch', 'rch'], ['#cm-tmot', 'mot'], ['#cm-trl', 'rl']]) {
     $(tid + ' thead').addEventListener('click', (e) => {
       const th = e.target.closest('th[data-k]'); if (!th) return;
-      const s = sortState[st]; s.asc = s.k === th.dataset.k ? !s.asc : ['nombre', 'marca', 'ejemplo', 'top', 'chofer', 'vendedor', 'cliente', 'provs'].includes(th.dataset.k); s.k = th.dataset.k; draw();
+      const s = sortState[st]; s.asc = s.k === th.dataset.k ? !s.asc : ['nombre', 'marca', 'ejemplo', 'top', 'chofer', 'vendedor', 'cliente', 'provs', 'motivo', 'tipo', 'viaje'].includes(th.dataset.k); s.k = th.dataset.k; draw();
     });
   }
   const sortRows = (rows, st, defK) => {
@@ -313,19 +355,22 @@ window.dash = (() => {
 
   function draw() {
     const A = dash.data('chofer_proveedor'), D = dash.data('pedidos'), M = dash.data('proveedores'), V = dash.data('vendedores');
+    const R = dash.data('rechazos'), MO = dash.data('motivos'), CL = dash.data('clientes');
     const p = P();
     selP.value = p.periodo;
     $('#cm-dia-box').hidden = p.periodo !== 'dia';
     if (inDia !== document.activeElement) inDia.value = p.dia || iso(new Date());
     for (const b of document.querySelectorAll('#cm-medida button')) b.setAttribute('aria-pressed', String(b.dataset.v === p.medida));
     const chart = $('#cm-chart');
-    if ([A, D, M, V].some((x) => x.status !== 'ok')) {
-      if ([A, D, M, V].some((x) => x.status === 'error')) { fail(chart); $('#cm-take').classList.remove('dash-skeleton'); }
+    if ([A, D, M, V, R, MO, CL].some((x) => x.status !== 'ok')) {
+      if ([A, D, M, V, R, MO, CL].some((x) => x.status === 'error')) { fail(chart); $('#cm-take').classList.remove('dash-skeleton'); }
       return;
     }
     for (const el of document.querySelectorAll('.cm .dash-skeleton')) el.classList.remove('dash-skeleton');
 
     nombreProv = new Map(M.data.map((r) => [String(r.proveedor), corto(r.proveedor_nombre)]));
+    nombreCliente = new Map(CL.data.map((r) => [String(r.cliente), r.cliente_nombre]));
+    nombreMotivo = new Map(MO.data.map((r) => [String(r.motivo), tituloCase(r.motivo_nombre)]));
     nombreVendedor = new Map(V.data.map((r) => [String(r.vendedor), tituloCase(r.vendedor_nombre)]));
     for (const r of A.data) nombreChofer.set(String(r.chofer), tituloCase(r.chofer_nombre));
     const venVol = d3.rollup(D.data, (v) => v.length, (r) => String(r.vendedor));
@@ -492,7 +537,7 @@ window.dash = (() => {
       const q = buscar.value.trim().toLowerCase();
       let ped = rowsD.map((r) => ({
         pedido: +r.pedido, fecha: r.fecha, viaje: String(r.viaje), chofer: nombreChofer.get(String(r.chofer)) || r.chofer,
-        vendedor: vendedorTxt(r.vendedor), cliente: r.cliente_nombre ? r.cliente + ' · ' + r.cliente_nombre : String(r.cliente),
+        vendedor: vendedorTxt(r.vendedor), cliente: clienteTxt(r.cliente),
         bultos: +r.bultos, neto: +r.neto, provs: r.proveedores.split(',').filter(Boolean).map(etiqueta).join(', '),
       }));
       if (q) ped = ped.filter((r) => [r.pedido, r.viaje, r.chofer, r.vendedor, r.cliente].join(' ').toLowerCase().includes(q));
@@ -515,6 +560,72 @@ window.dash = (() => {
         const bar = document.createElement('span'); bar.className = 'cm-pct'; bar.style.width = Math.round(r.share * 60) + 'px'; td.append(bar); tr.append(td);
         return tr;
       }));
+
+      // Rechazos: mismos filtros; con proveedor, solo la parte de ese proveedor. El motivo filtra solo esta sección.
+      const rowsR0 = R.data.filter((r) => base(r) && (!p.proveedor || String(r.proveedor) === p.proveedor));
+      const juntar = (rows) => Array.from(d3.group(rows, (r) => r.rechazo), ([id, v]) => ({
+        ...v[0], id, bultos: d3.sum(v, (r) => +r.bultos), neto: d3.sum(v, (r) => +r.neto),
+        provs: v.map((r) => etiqueta(r.proveedor)).join(', '),
+      }));
+      const rech0 = juntar(rowsR0);
+      const rech = p.motivo ? rech0.filter((r) => String(r.motivo) === p.motivo) : rech0;
+      const valR = (x) => (med === 'pedidos' ? x.rech : x[med]);
+      const pedRech = (v) => new Set(v.map((r) => r.pedido)).size;
+      const totR = { rech: rech.length, pedidos: pedRech(rech), neto: d3.sum(rech, (r) => r.neto), totales: rech.filter((r) => +r.total === 1).length };
+      $('#r-cant').textContent = nf.format(totR.rech);
+      $('#r-pct').textContent = nf.format(totR.pedidos) + (tot.pedidos ? ' · ' + pf.format(totR.pedidos / tot.pedidos) : '');
+      $('#r-neto').textContent = money(totR.neto) + (tot.neto ? ' · ' + pf.format(totR.neto / tot.neto) : '');
+      $('#r-tot').textContent = nf.format(totR.totales) + ' / ' + nf.format(totR.rech - totR.totales);
+
+      // Por chofer
+      const rByC = d3.group(rech, (r) => String(r.chofer));
+      const netoC = new Map([...byCM].map(([c, mm]) => [c, d3.sum([...mm.values()], (x) => x.neto)]));
+      const rch = [...new Set([...dByC.keys(), ...rByC.keys()])].map((c) => {
+        const v = rByC.get(c) || [], ped = (dByC.get(c) || {}).pedidos || 0, pr = pedRech(v), neto = d3.sum(v, (r) => r.neto);
+        const topMot = d3.greatest(d3.rollups(v, (w) => w.length, (r) => String(r.motivo)), (d) => d[1]);
+        return {
+          key: c, nombre: nombreChofer.get(c) || 'Chofer ' + c, pedidos: ped, rech: v.length, pct: ped ? pr / ped : 0,
+          totales: v.filter((r) => +r.total === 1).length, parciales: v.filter((r) => +r.total !== 1).length,
+          bultos: d3.sum(v, (r) => r.bultos), neto, pctNeto: netoC.get(c) ? neto / netoC.get(c) : 0,
+          reparto: v.filter((r) => MOT_REPARTO.has(String(r.motivo))).length,
+          top: topMot ? motivoTxt(topMot[0]) + ' · ' + nf.format(topMot[1]) : '',
+        };
+      });
+      sortRows(rch, 'rch', 'rech');
+      $('#cm-trch tbody').replaceChildren(...rch.map((r) => fila([[r.nombre, 'l'], [nf.format(r.pedidos)], [nf.format(r.rech)], [pf.format(r.pct)], [nf.format(r.totales)], [nf.format(r.parciales)], [nf.format(r.bultos)], [money(r.neto)], [pf.format(r.pctNeto)], [nf.format(r.reparto)], [r.top, 'l w']], r.key, p.chofer === r.key)));
+      const peor = rch.filter((r) => r.pedidos >= 20).sort((a, b) => b.pct - a.pct)[0];
+      const topM0 = d3.greatest(d3.rollups(rech, (w) => w.length, (r) => String(r.motivo)), (d) => d[1]);
+      $('#cm-rch-take').textContent = !rech.length
+        ? 'No hay rechazos ' + perTxt(p) + ' con estos filtros.'
+        : nf.format(totR.rech) + ' rechazos ' + perTxt(p) + (p.motivo ? ' por “' + motivoTxt(p.motivo) + '”' : '') + ': ' + pf.format(tot.pedidos ? totR.pedidos / tot.pedidos : 0) + ' de los pedidos y ' + money(totR.neto) + ' de neto. '
+          + (topM0 && !p.motivo ? 'El motivo más común es “' + motivoTxt(topM0[0]) + '” (' + nf.format(topM0[1]) + '). ' : '')
+          + (peor && !p.chofer && rch.length > 1 ? 'El chofer con más pedidos rechazados es ' + peor.nombre + ' (' + pf.format(peor.pct) + '). ' : '')
+          + 'Total = devolvió todo el pedido; parcial = una parte.';
+
+      // Motivos (sin el filtro de motivo, para poder elegir otro)
+      const totMot = d3.sum(rech0, (r) => (med === 'pedidos' ? 1 : r[med]));
+      const mot = Array.from(d3.group(rech0, (r) => String(r.motivo)), ([m, v]) => {
+        const x = { key: m, motivo: motivoTxt(m), rech: v.length, bultos: d3.sum(v, (r) => r.bultos), neto: d3.sum(v, (r) => r.neto), choferes: new Set(v.map((r) => r.chofer)).size };
+        x.share = totMot ? valR(x) / totMot : 0; return x;
+      });
+      sortRows(mot, 'mot', med === 'pedidos' ? 'rech' : med);
+      $('#cm-tmot tbody').replaceChildren(...mot.map((r) => {
+        const tr = fila([[r.motivo, 'l'], [nf.format(r.rech)], [nf.format(r.bultos)], [money(r.neto)], [nf.format(r.choferes)]], r.key, p.motivo === r.key);
+        const td = document.createElement('td'); td.textContent = pf.format(r.share);
+        const bar = document.createElement('span'); bar.className = 'cm-pct'; bar.style.width = Math.round(r.share * 60) + 'px'; td.append(bar); tr.append(td);
+        return tr;
+      }));
+
+      // Detalle
+      const rq = rbuscar.value.trim().toLowerCase();
+      let rl = rech.map((r) => ({
+        fecha: r.fecha, viaje: String(r.viaje), chofer: nombreChofer.get(String(r.chofer)) || r.chofer, vendedor: vendedorTxt(r.vendedor),
+        cliente: clienteTxt(r.cliente), motivo: motivoTxt(r.motivo), tipo: +r.total === 1 ? 'Total' : 'Parcial', bultos: r.bultos, neto: r.neto, provs: r.provs, id: +r.id,
+      }));
+      if (rq) rl = rl.filter((r) => [r.viaje, r.chofer, r.vendedor, r.cliente, r.motivo, r.tipo].join(' ').toLowerCase().includes(rq));
+      if (!sortState.rl.k) rl.sort((a, b) => (b.fecha === a.fecha ? b.id - a.id : b.fecha.localeCompare(a.fecha))); else sortRows(rl, 'rl', 'fecha');
+      $('#cm-trl tbody').replaceChildren(...rl.slice(0, MAX_PED).map((r) => fila([[fecha(r.fecha), 'l'], [r.viaje, 'l'], [r.chofer, 'l'], [r.vendedor, 'l'], [r.cliente, 'l'], [r.motivo, 'l'], [r.tipo, 'l'], [nf.format(r.bultos)], [money(r.neto)], [r.provs, 'l w']])));
+      $('#cm-rl-note').textContent = nf.format(rl.length) + ' rechazos' + (rl.length > MAX_PED ? ', se muestran los primeros ' + MAX_PED : '') + '. Bultos y neto son lo rechazado' + (p.proveedor ? ' de ' + etiqueta(p.proveedor) : '') + '.';
     }
   }
 
